@@ -1,2 +1,3 @@
 # SeriesTopic
-predict series with LDA
+
+This project predict time series with LDA topic model. 

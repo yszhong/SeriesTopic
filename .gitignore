@@ -87,3 +87,10 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Data source
+Combined_News_DJIA.csv
+DJIA_table.csv
+
+# Ignore self
+!.gitignore
