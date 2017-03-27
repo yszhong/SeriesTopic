@@ -29,7 +29,7 @@ def generate_topic(data, num_topic=10):
         lda.set_params(doc_topic_prior=alpha, topic_word_prior=eta)
     doc_topic = lda.transform(X)
     doc_topic = pandas.DataFrame(doc_topic)
-    word_dist = numpy.array(lda.components_)
+    word_dist = lda.components_
     return doc_topic, word_dist, vocab
 
 def read_djia(thres):
@@ -75,16 +75,13 @@ def rf_predict(data, label, period):
     label = label.values
     rf = RandomForestClassifier()
     pred = numpy.array(label, copy=True)
-    imp = []
+    imp = [[] for i in range(len(label))]
     for i in range(len(label)):
-        if i <= period:
-            imp.append(numpy.zeros(data.shape[1]).tolist())
         if i > period:
             rf.fit(data[i-period:i, :], label[i-period:i])
-            imp.append(rf.feature_importances_.tolist())
+            imp[i] = rf.feature_importances_.tolist()
             pred[i] = rf.predict(data[i, :])
     pred = pandas.Series(pred, index = ind)
-    imp = numpy.array(imp)
     return pred, imp
 
 def simple_weight(label, base_pred, ref_pred):
@@ -123,12 +120,16 @@ def mapd(forecast, actual, winsize):
 	up = 0
 	down = 0
 	zr = 0
+	L = int(0.8 * len(actual))
+	forecast = forecast
+	actual = actual
 	for i in range(0, len(actual), winsize):
-		if forecast[i] == actual[i]:
-			up += 1
 		down += 1
 		if actual[i] == 0:
 			zr += 1
+			continue
+		if forecast[i] == actual[i]:
+			up += 1
 	accuracy = float(up) / float(down)
 	return accuracy, zr
 
@@ -152,32 +153,40 @@ def showord(importance, words, vocabulary, label):
 			w_down.append(tops)
 	return w_up, w_down
 
-def outputimp(importance, words, vocabulary, label):
-	dte = label.index
-	vocabulary = sorted(vocabulary.iteritems(), key=lambda d:d[1])
-	vocabulary = [d[0] for d in vocabulary]
-	label = label.values / abs(label.values)
-	label = label.reshape(1, -1)
-	clr = pandas.DataFrame(label, columns=dte)
-	clr.to_csv("wordcolor.csv")
-	tempw = numpy.zeros((importance.shape[0], words.shape[1]))
-	for i in range(tempw.shape[0]):
-		for j in range(tempw.shape[1]):
-			tempw[i, j] = sum(importance[i, :] * words[:,j])
-	words = tempw.transpose()
-	wgt = pandas.DataFrame(words, index=vocabulary, columns=dte)
-	wgt.to_csv("wordweight.csv")
-	return True
+def weight_propagation(base_data, ref_data, label, period=30, maxiter=100):
+    ind = label.index
+    base_pred, imp = rf_predict(base_data, label, period)
+    ref_pred, imp = rf_predict(ref_data, label, period)
+    deriv = []
+    print "Ready"
+    flag = True
+    i = 1
+    while flag:
+        print "Iteration " + str(i+1) + " Begins..."
+        i += 1
+        weights = simple_weight(label, base_pred, ref_pred)
+        base_pred = rf_weights(base_data, label, weights, period)
+        weights = simple_weight(label, ref_pred, base_pred)
+        ref_pred = rf_weights(ref_data, label, weights, period)
+        d = numpy.array([mapd(base_pred.values, label.values, period), mapd(ref_pred.values, label.values, period)]).reshape(1, -1)
+        if not len(deriv):
+            deriv = d
+        else:
+            deriv = numpy.concatenate((deriv, d), axis=0)
+        if sum(abs(label-base_pred)/label) < 1e-3 or i > maxiter:
+            flag=False
+    return base_pred, deriv
 
 if __name__ == "__main__":
 	start = time.clock()
 	winsize = 7
-	thres = 10
+	thres = 0
 	if len(sys.argv) >= 2:
-		winsize = int(sys.argv[1])
+		if int(sys.argv[1]) > 1 and int(sys.argv[1]) < 1000:
+			winsize = int(sys.argv[1])
 	if len(sys.argv) >= 3:
 		thres = int(sys.argv[2])
-	#print "Threshold is " + str(thres)
+	print "Window Size is " + str(winsize)
 	warnings.filterwarnings("ignore")
 	data, label = read_djia(thres)
 	history = generate_history(data, period=winsize)
@@ -185,12 +194,18 @@ if __name__ == "__main__":
 	#print "Data Read"
 	base_pred, imp = rf_predict(data, label, winsize)
 	ref_pred, imp = rf_predict(doc_topic, label, winsize)
-	wu, wd = showord(imp, wrd, voc, label)
-	outputimp(imp, wrd, voc, label)
+	#wu, wd = showord(imp, wrd, voc, label)
+	#print wu, wd
 	#print "Classifier Built"
 	weights = simple_weight(label, base_pred, ref_pred)
 	new_pred = rf_weights(data, label, weights, winsize)
+	M, al = mapd(base_pred.values, label.values, winsize)
+	print "History Accuracy: " + str(M)
+	M, al = mapd(ref_pred.values, label.values, winsize)
+	print "LDA Accuracy: " + str(M)
 	M, al = mapd(new_pred.values, label.values, winsize)
-	print "Accuracy: " + str(M)
+	print "Weight Accuracy: " + str(M)
+	#new_pred, M = weight_propagation(history, doc_topic, label, period=winsize, maxiter=100)
+	#print "Propagation Accuracy: " + str(M)
 	end = time.clock()
 	#print "Running Time: " + str(end - start) + " seconds"

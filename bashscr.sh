@@ -1,8 +1,8 @@
 #!/bin/bash
 
 echo "Begins"
-for i in {0..100}
+for ((i=1;i<=500;i+=1))
 do
-	python dtrp_clword.py 7 $i
+	python dtrp_classcomp.py $i
 done
 echo "End"
