@@ -109,10 +109,18 @@ def rf_weights(data, label, weight, winsize):
 def mapd(forecast, actual):
     return 100 * sum(abs(actual - forecast) / actual) / len(actual)
 
+def showtopic(wrd, vocab, imp, ntopic=10):
+	belong = numpy.argmax(wrd, axis=0)
+	wrdset = [[item for item in vocab.keys() if belong[vocab[item]]==t] for t in range(ntopic)]
+	wrdset = map(list, zip(*wrdset))
+	wrdset = pandas.DataFrame(wrdset)
+	wrdset.to_csv("wordset.csv")
+	return True
+
 if __name__ == "__main__":
 	start = time.clock()
-	winsize = 14
-	ntopic = 20
+	winsize = 7
+	ntopic = 10
 	if len(sys.argv) >= 2:
 		if int(sys.argv[1]) > 0 and int(sys.argv[1]) < 1000:
 			winsize = int(sys.argv[1])
@@ -128,6 +136,7 @@ if __name__ == "__main__":
 	#print "Data Read"
 	base_pred, imp = rf_predict(data, label, winsize)
 	ref_pred, imp = rf_predict(doc_topic, label, winsize)
+	showtopic(wrd, vocab, imp, ntopic=ntopic)
 	#print "Regressor Built"
 	weights = simple_weight(label, base_pred, ref_pred)
 	new_pred = rf_weights(data, label, weights, winsize)

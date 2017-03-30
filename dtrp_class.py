@@ -41,6 +41,24 @@ def read_djia(thres):
     label = bin_label(label, thres)
     return data, label
 
+def read_nasdaq():
+	parser = lambda date: pandas.datetime.strptime(date, "%Y/%m/%d")
+	data = pandas.read_csv("NASDAQ.csv", header=0, parse_dates=["Date"], date_parser=parser)
+	begin = datetime.date(2008, 8, 8)
+	begin = len(data[pandas.to_datetime(data["Date"]) > begin])
+	end = datetime.date(2016, 7, 1)
+	end = len(data[pandas.to_datetime(data["Date"]) >= end])
+	#print begin, data["Date"][begin]
+	#print end, data["Date"][end]
+	data = pandas.DataFrame(data.values[end:begin, :], columns=data.columns)
+	data.index = data["Date"]
+	data = data.drop(["Date"], axis=1)
+	label = pandas.Series(data["Close"], index=data.index)
+	label = label[end:begin]
+	label = bin_label(label, thres)
+	print label
+	return data, label
+
 def bin_label(label, thres):
 	ind = label.index
 	label = label.diff(1).values
@@ -131,11 +149,13 @@ if __name__ == "__main__":
 	winsize = 7
 	thres = 10
 	if len(sys.argv) >= 2:
-		winsize = int(sys.argv[1])
+		if int(sys.argv[1]) > 1 and int(sys.argv[1]) < 1900:
+			winsize = int(sys.argv[1])
 	if len(sys.argv) >= 3:
 		thres = int(sys.argv[2])
-	print "Threshold is " + str(thres)
+	print "Window Size is " + str(winsize)
 	warnings.filterwarnings("ignore")
+	data, label = read_djia(thres)
 	data, label = read_djia(thres)
 	history = generate_history(data, period=winsize)
 	doc_topic = generate_topic(read_djia_news(), num_topic=10)

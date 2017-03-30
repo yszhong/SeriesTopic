@@ -100,30 +100,38 @@ def simple_weight(label, base_pred, ref_pred):
             weight[i] = 0
     return weight
 
-def rf_weights(data, label, weight, winsize):
+def rf_weights(data, label, weight, period, interval):
     ind = label.index
     data = data.values
     label = label.values
     rf = RandomForestClassifier()
     pred = numpy.array(label, copy=True)
-    for i in range(0, len(label), winsize):
-        period = 1
-        while numpy.log(weight[i-period]) >= 0 and i > period+1:
-            period += 1
-        if period >= winsize:
+    L = int(0.8 * len(label))
+    """
+    for i in range(0, L, interval):
+        if i > period:
+            rf.fit(data[i-period:i, :], label[i-period:i], sample_weight=weight[i-period:i])
+            pred[i] = rf.predict(data[i, :])
+    for i in range(L, len(label), interval):
+        if i > period:
+            rf.fit(data[i-period:i, :], label[i-period:i], sample_weight=weight[i-period:i])
+            pred[i] = rf.predict(data[i, :])
+    """
+    for i in range(0, len(label)):
+        if i > period:
             rf.fit(data[i-period:i, :], label[i-period:i], sample_weight=weight[i-period:i])
             pred[i] = rf.predict(data[i, :])
     pred = pandas.Series(pred, index = ind)
     return pred
 
-def mapd(forecast, actual, winsize):
+def mapd(forecast, actual, interval):
 	up = 0
 	down = 0
 	zr = 0
 	L = int(0.8 * len(actual))
 	forecast = forecast
 	actual = actual
-	for i in range(0, len(actual), winsize):
+	for i in range(L, len(actual), interval):
 		down += 1
 		if actual[i] == 0:
 			zr += 1
@@ -179,14 +187,18 @@ def weight_propagation(base_data, ref_data, label, period=30, maxiter=100):
 
 if __name__ == "__main__":
 	start = time.clock()
-	winsize = 7
-	thres = 0
+	winsize = 50
+	thres = 10
+	interval = 10
 	if len(sys.argv) >= 2:
 		if int(sys.argv[1]) > 1 and int(sys.argv[1]) < 1000:
 			winsize = int(sys.argv[1])
 	if len(sys.argv) >= 3:
-		thres = int(sys.argv[2])
-	print "Window Size is " + str(winsize)
+		if int(sys.argv[2]) > 0 and int(sys.argv[2]) < winsize:
+			interval = int(sys.argv[2])
+	if len(sys.argv) >= 4:
+		thres = int(sys.argv[3])
+	print "Interval is " + str(interval)
 	warnings.filterwarnings("ignore")
 	data, label = read_djia(thres)
 	history = generate_history(data, period=winsize)
@@ -198,12 +210,12 @@ if __name__ == "__main__":
 	#print wu, wd
 	#print "Classifier Built"
 	weights = simple_weight(label, base_pred, ref_pred)
-	new_pred = rf_weights(data, label, weights, winsize)
-	M, al = mapd(base_pred.values, label.values, winsize)
+	new_pred = rf_weights(data, label, weights, winsize, interval)
+	M, al = mapd(base_pred.values, label.values, interval)
 	print "History Accuracy: " + str(M)
-	M, al = mapd(ref_pred.values, label.values, winsize)
+	M, al = mapd(ref_pred.values, label.values, interval)
 	print "LDA Accuracy: " + str(M)
-	M, al = mapd(new_pred.values, label.values, winsize)
+	M, al = mapd(new_pred.values, label.values, interval)
 	print "Weight Accuracy: " + str(M)
 	#new_pred, M = weight_propagation(history, doc_topic, label, period=winsize, maxiter=100)
 	#print "Propagation Accuracy: " + str(M)

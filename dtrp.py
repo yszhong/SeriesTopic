@@ -8,6 +8,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 import warnings
 import time
 import sys
+import datetime
 
 def read_djia_news():
     data = pandas.read_csv("Combined_News_DJIA.csv", header=0)
@@ -38,6 +39,22 @@ def read_djia():
     data = data.drop(["Date"], axis=1)
     label = data["Adj Close"]
     return data, label
+
+def read_nasdaq():
+	parser = lambda date: pandas.datetime.strptime(date, "%Y/%m/%d")
+	data = pandas.read_csv("NASDAQ.csv", header=0, parse_dates=["Date"], date_parser=parser)
+	begin = datetime.date(2008, 8, 8)
+	begin = len(data[pandas.to_datetime(data["Date"]) > begin])
+	end = datetime.date(2016, 7, 1)
+	end = len(data[pandas.to_datetime(data["Date"]) >= end])
+	#print begin, data["Date"][begin]
+	#print end, data["Date"][end]
+	data = pandas.DataFrame(data.values[end:begin, :], columns=data.columns)
+	data.index = data["Date"]
+	data = data.drop(["Date"], axis=1)
+	label = pandas.Series(data["Close"], index=data.index)
+	label = label[end:begin]
+	return data, label
 
 def generate_history(data, period = 7):
     flag = True
@@ -108,20 +125,25 @@ if __name__ == "__main__":
 	winsize = 7
 	ntopic = 10
 	if len(sys.argv) >= 2:
-		if int(sys.argv[1]) > 0 and int(sys.argv[1]) < 1000:
+		if int(sys.argv[1]) > 1 and int(sys.argv[1]) < 1900:
 			winsize = int(sys.argv[1])
 	if len(sys.argv) >= 3:
 		if int(sys.argv[2]) > 1:
 			ntopic = int(sys.argv[2])
-	#print "Window Size is " + str(winsize)
-	print "Amount of Topic: " + str(ntopic)
+	print "Window Size is " + str(winsize)
+	#print "Amount of Topic: " + str(ntopic)
 	warnings.filterwarnings("ignore")
-	data, label = read_djia()
+	#data, label = read_djia()
+	data, label = read_nasdaq()
 	history = generate_history(data, period=winsize)
 	doc_topic = generate_topic(read_djia_news(), num_topic=ntopic)
 	#print "Data Read"
 	base_pred = rf_predict(data, label, winsize)
+	M = mapd(base_pred.values, label.values)
+	print "History: " + str(M)
 	ref_pred = rf_predict(doc_topic, label, winsize)
+	M = mapd(ref_pred.values, label.values)
+	print "LDA: " + str(M)
 	#print "Regressor Built"
 	weights = simple_weight(label, base_pred, ref_pred)
 	new_pred = rf_weights(data, label, weights, winsize)

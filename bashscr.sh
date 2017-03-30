@@ -1,8 +1,8 @@
 #!/bin/bash
 
-echo "Begins"
-for ((i=1;i<=500;i+=1))
+echo "Start"
+for ((i=1;i<=100;i+=1))
 do
-	python dtrp_classcomp.py $i
+	python dtrp_classcomp.py 100 $i 0
 done
 echo "End"

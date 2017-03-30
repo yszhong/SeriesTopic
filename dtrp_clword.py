@@ -186,7 +186,7 @@ if __name__ == "__main__":
 	base_pred, imp = rf_predict(data, label, winsize)
 	ref_pred, imp = rf_predict(doc_topic, label, winsize)
 	wu, wd = showord(imp, wrd, voc, label)
-	outputimp(imp, wrd, voc, label)
+	#outputimp(imp, wrd, voc, label)
 	#print "Classifier Built"
 	weights = simple_weight(label, base_pred, ref_pred)
 	new_pred = rf_weights(data, label, weights, winsize)
