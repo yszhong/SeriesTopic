@@ -91,6 +91,11 @@ ENV/
 # Data source
 Combined_News_DJIA.csv
 DJIA_table.csv
+DJIA.csv
+NASDAQ.csv
+Shanghai.csv
+Shenzhen.csv
+CSI300.csv
 
 # Ignore self
 !.gitignore

@@ -78,7 +78,7 @@ def rf_predict(data, label, period):
     label = label.values
     rf = RandomForestRegressor()
     pred = numpy.array(label, copy=True)
-    for i in range(0, len(label), period):
+    for i in range(len(label)):
         if i > period:
             rf.fit(data[i-period:i, :], label[i-period:i])
             pred[i] = rf.predict(data[i, :])
@@ -107,47 +107,77 @@ def rf_weights(data, label, weight, winsize):
     label = label.values
     rf = RandomForestRegressor()
     pred = numpy.array(label, copy=True)
-    for i in range(0, len(label), winsize):
+    for i in range(len(label)):
         period = 1
         while numpy.log(weight[i-period]) >= 0 and i > period+1:
             period += 1
-        if period >= winsize:
+        if period >= winsize and i > period:
             rf.fit(data[i-period:i, :], label[i-period:i], sample_weight=weight[i-period:i])
             pred[i] = rf.predict(data[i, :])
     pred = pandas.Series(pred, index = ind)
     return pred
 
 def mapd(forecast, actual):
-    return 100 * sum(abs(actual - forecast) / actual) / len(actual)
+	#"""
+	percent = 0.8
+	L = percent * len(actual)
+	actual = actual[L:]
+	forecast = forecast[L:]
+	#"""
+	return 100 * sum(abs(actual - forecast) / actual) / len(actual)
+
+def weight_propagation(base_data, ref_data, label, period=30, maxiter=100):
+    ind = label.index
+    base_pred = rf_predict(base_data, label, period)
+    ref_pred = rf_predict(ref_data, label, period)
+    deriv = []
+    flag = True
+    i = 1
+    while flag:
+        #print "Iteration " + str(i) + " Begins..."
+        i += 1
+        weights = simple_weight(label, base_pred, ref_pred)
+        base_pred = rf_weights(base_data, label, weights, period)
+        weights = simple_weight(label, ref_pred, base_pred)
+        ref_pred = rf_weights(ref_data, label, weights, period)
+        deriv.append(mapd(base_pred.values, label.values))
+        if sum(abs(label-base_pred)/label) < 1e-1 or i > maxiter:
+            flag=False
+    return base_pred, deriv
 
 if __name__ == "__main__":
 	start = time.clock()
 	winsize = 7
-	ntopic = 10
+	ntopic = 20
 	if len(sys.argv) >= 2:
 		if int(sys.argv[1]) > 1 and int(sys.argv[1]) < 1900:
 			winsize = int(sys.argv[1])
 	if len(sys.argv) >= 3:
 		if int(sys.argv[2]) > 1:
 			ntopic = int(sys.argv[2])
-	print "Window Size is " + str(winsize)
+	if len(sys.argv) >= 4:
+		if int(sys.argv[3]) >= 0:
+			thres = int(sys.argv[3])
+	print "Params:", winsize, ntopic, thres
 	#print "Amount of Topic: " + str(ntopic)
 	warnings.filterwarnings("ignore")
-	#data, label = read_djia()
+	data, label = read_djia()
 	data, label = read_nasdaq()
 	history = generate_history(data, period=winsize)
 	doc_topic = generate_topic(read_djia_news(), num_topic=ntopic)
 	#print "Data Read"
 	base_pred = rf_predict(data, label, winsize)
 	M = mapd(base_pred.values, label.values)
-	print "History: " + str(M)
+	print "History:", M
 	ref_pred = rf_predict(doc_topic, label, winsize)
 	M = mapd(ref_pred.values, label.values)
-	print "LDA: " + str(M)
+	print "LDA:", M
 	#print "Regressor Built"
 	weights = simple_weight(label, base_pred, ref_pred)
 	new_pred = rf_weights(data, label, weights, winsize)
 	M = mapd(new_pred.values, label.values)
-	print "Mean Absolute Percentage Deviation: " + str(M)
+	print "Weighted:", M
+	new_pred, M = weight_propagation(data, doc_topic, label, period=winsize, maxiter=5)
+	print "Propagation:", M
 	end = time.clock()
 	#print "Running Time: " + str(end - start) + " seconds"
