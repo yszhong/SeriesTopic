@@ -77,7 +77,7 @@ def rf_predict(data, label, period):
     data = data.values
     label = label.values
     rf = RandomForestRegressor()
-    pred = numpy.array(label, copy=True)
+    pred = numpy.array(numpy.zeros(len(label)), copy=True)
     for i in range(len(label)):
         if i > period:
             rf.fit(data[i-period:i, :], label[i-period:i])
@@ -106,25 +106,57 @@ def rf_weights(data, label, weight, winsize):
     data = data.values
     label = label.values
     rf = RandomForestRegressor()
-    pred = numpy.array(label, copy=True)
+    pred = numpy.array(numpy.zeros(len(label)), copy=True)
     for i in range(len(label)):
-        period = 1
-        while numpy.log(weight[i-period]) >= 0 and i > period+1:
+        period = winsize
+        while i > period+1 and numpy.log(numpy.min(weight[i-period:i])) >= 0:
             period += 1
-        if period >= winsize and i > period:
+        if i > period:
             rf.fit(data[i-period:i, :], label[i-period:i], sample_weight=weight[i-period:i])
-            pred[i] = rf.predict(data[i, :])
+            pred[i] = rf.predict(data[i, :]*prweight(weight[i-period:i]))
     pred = pandas.Series(pred, index = ind)
     return pred
 
-def mapd(forecast, actual):
-	#"""
+def prweight(trweight):
+	for i in range(len(trweight)):
+		trweight[i]  = 1 - trweight[i]
+		trweight[i] *= 1 - i / len(trweight)
+		trweight[i] = 1 - trweight[i]
+	w = numpy.mean(trweight)
+	return w
+
+def mapd(forecast, actual, interval):
 	percent = 0.8
 	L = percent * len(actual)
 	actual = actual[L:]
 	forecast = forecast[L:]
-	#"""
-	return 100 * sum(abs(actual - forecast) / actual) / len(actual)
+	m = 0
+	for i in range(len(actual)):
+		if forecast[i] > 0:
+			m += abs(actual[i] - forecast[i]) / actual[i]
+	m = 100 * m / len(actual)
+	return m
+
+
+def accuracy(forecast, actual, interval):
+	up = 0
+	down = 0
+	zr = 0
+	percent = 0.8
+	L = percent * len(actual)
+	actual = actual[L-1:]
+	forecast = forecast[L-1:]
+	for i in range(1, len(actual)):
+		if abs(forecast[i]) > 0:
+			down += 1
+			if actual[i] == actual[i-1]:
+				zr += 1
+				continue
+			fdiff = forecast[i]-forecast[i-1]
+			adiff = actual[i]-actual[i-1]
+			if fdiff/abs(fdiff) == adiff/abs(adiff):
+				up += 1
+	return float(up) / float(down)
 
 def weight_propagation(base_data, ref_data, label, period=30, maxiter=100):
     ind = label.index
@@ -140,15 +172,16 @@ def weight_propagation(base_data, ref_data, label, period=30, maxiter=100):
         base_pred = rf_weights(base_data, label, weights, period)
         weights = simple_weight(label, ref_pred, base_pred)
         ref_pred = rf_weights(ref_data, label, weights, period)
-        deriv.append(mapd(base_pred.values, label.values))
+        deriv.append(mapd(base_pred.values, label.values, interv))
         if sum(abs(label-base_pred)/label) < 1e-1 or i > maxiter:
             flag=False
     return base_pred, deriv
 
 if __name__ == "__main__":
 	start = time.clock()
-	winsize = 7
+	winsize = 50
 	ntopic = 20
+	interv = 0
 	if len(sys.argv) >= 2:
 		if int(sys.argv[1]) > 1 and int(sys.argv[1]) < 1900:
 			winsize = int(sys.argv[1])
@@ -157,27 +190,33 @@ if __name__ == "__main__":
 			ntopic = int(sys.argv[2])
 	if len(sys.argv) >= 4:
 		if int(sys.argv[3]) >= 0:
-			thres = int(sys.argv[3])
-	print "Params:", winsize, ntopic, thres
+			interv = int(sys.argv[3])
+	print "Params:", winsize, ntopic, interv
 	#print "Amount of Topic: " + str(ntopic)
 	warnings.filterwarnings("ignore")
 	data, label = read_djia()
-	data, label = read_nasdaq()
+	#data, label = read_nasdaq()
 	history = generate_history(data, period=winsize)
 	doc_topic = generate_topic(read_djia_news(), num_topic=ntopic)
 	#print "Data Read"
 	base_pred = rf_predict(data, label, winsize)
-	M = mapd(base_pred.values, label.values)
+	M = mapd(base_pred.values, label.values, interv)
 	print "History:", M
+	M = accuracy(new_pred.values, label.values, interv)
+	print "Acc:", M
 	ref_pred = rf_predict(doc_topic, label, winsize)
-	M = mapd(ref_pred.values, label.values)
+	M = mapd(ref_pred.values, label.values, interv)
 	print "LDA:", M
+	M = accuracy(new_pred.values, label.values, interv)
+	print "Acc:", M
 	#print "Regressor Built"
 	weights = simple_weight(label, base_pred, ref_pred)
 	new_pred = rf_weights(data, label, weights, winsize)
-	M = mapd(new_pred.values, label.values)
+	M = mapd(new_pred.values, label.values, interv)
 	print "Weighted:", M
-	new_pred, M = weight_propagation(data, doc_topic, label, period=winsize, maxiter=5)
-	print "Propagation:", M
+	M = accuracy(new_pred.values, label.values, interv)
+	print "Acc:", M
+	#new_pred, M = weight_propagation(data, doc_topic, label, period=winsize, maxiter=5)
+	#print "Propagation:", M
 	end = time.clock()
 	#print "Running Time: " + str(end - start) + " seconds"
