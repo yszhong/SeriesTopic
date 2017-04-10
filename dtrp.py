@@ -202,12 +202,12 @@ if __name__ == "__main__":
 	base_pred = rf_predict(data, label, winsize)
 	M = mapd(base_pred.values, label.values, interv)
 	print "History:", M
-	M = accuracy(new_pred.values, label.values, interv)
+	M = accuracy(base_pred.values, label.values, interv)
 	print "Acc:", M
 	ref_pred = rf_predict(doc_topic, label, winsize)
 	M = mapd(ref_pred.values, label.values, interv)
 	print "LDA:", M
-	M = accuracy(new_pred.values, label.values, interv)
+	M = accuracy(ref_pred.values, label.values, interv)
 	print "Acc:", M
 	#print "Regressor Built"
 	weights = simple_weight(label, base_pred, ref_pred)
